@@ -33,6 +33,7 @@ import {
 	getOptionalOutputParser,
 	type N8nOutputParser,
 } from '@utils/output_parsers/N8nOutputParser';
+import { getTracingConfig } from '@utils/tracing';
 
 import {
 	fixEmptyContentMessage,
@@ -439,7 +440,11 @@ export async function toolsAgentExecute(
 				formatting_instructions:
 					'IMPORTANT: For your response to user, you MUST use the `format_final_json_response` tool with your complete answer formatted according to the required schema. Do not attempt to format the JSON manually - always use this tool. Your response will be rejected if it is not properly formatted through this tool. Only use this tool once you are ready to provide your final answer.',
 			};
-			const executeOptions = { signal: this.getExecutionCancelSignal() };
+			const tracingConfig = getTracingConfig(this);
+			const executeOptions = {
+				signal: this.getExecutionCancelSignal(),
+				...tracingConfig,
+			};
 
 			// Check if streaming is actually available
 			const isStreamingAvailable = 'isStreaming' in this ? this.isStreaming?.() : undefined;
