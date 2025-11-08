@@ -112,6 +112,28 @@ export class EmbeddingsGoogleGemini implements INodeType {
 				},
 				default: 'models/text-embedding-004',
 			},
+			{
+				displayName: 'Options',
+				name: 'options',
+				placeholder: 'Add Option',
+				description: 'Additional options to add',
+				type: 'collection',
+				default: {},
+				options: [
+					{
+						displayName: 'Output Dimensionality',
+						name: 'outputDimensionality',
+						default: undefined,
+						description:
+							'The number of dimensions the resulting output embeddings should have. Only supported in gemini-embedding-001 and later models.',
+						type: 'number',
+						typeOptions: {
+							minValue: 1,
+							maxValue: 3072,
+						},
+					},
+				],
+			},
 		],
 	};
 
@@ -123,14 +145,41 @@ export class EmbeddingsGoogleGemini implements INodeType {
 			'models/text-embedding-004',
 		) as string;
 		const credentials = await this.getCredentials('googlePalmApi');
-		const embeddings = new GoogleGenerativeAIEmbeddings({
+
+		const options = this.getNodeParameter('options', itemIndex, {}) as {
+			outputDimensionality?: number;
+		};
+
+		const embeddingsConfig: {
+			apiKey: string;
+			baseUrl: string;
+			model: string;
+			outputDimensionality?: number;
+		} = {
 			apiKey: credentials.apiKey as string,
 			baseUrl: credentials.host as string,
 			model: modelName,
-		});
+		};
+
+		if (options.outputDimensionality !== undefined) {
+			embeddingsConfig.outputDimensionality = options.outputDimensionality;
+		}
+
+		const embeddings = new GoogleGenerativeAIEmbeddings(embeddingsConfig);
+
+		// Store dimensions on the embeddings instance for vector stores to access
+		const wrappedEmbeddings = logWrapper(embeddings, this);
+		if (options.outputDimensionality !== undefined) {
+			// Store dimensions on the wrapped embeddings proxy for vector stores to access
+			Object.defineProperty(wrappedEmbeddings, 'dimensions', {
+				value: options.outputDimensionality,
+				writable: false,
+				enumerable: false,
+			});
+		}
 
 		return {
-			response: logWrapper(embeddings, this),
+			response: wrappedEmbeddings,
 		};
 	}
 }

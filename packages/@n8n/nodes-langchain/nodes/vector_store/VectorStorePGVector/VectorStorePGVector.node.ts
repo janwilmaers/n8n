@@ -181,18 +181,40 @@ const retrieveFields: INodeProperties[] = [
 ];
 
 /**
+ * Normalizes a vector to unit length (L2 normalization).
+ * For cosine similarity, vectors must be normalized to ensure accurate results.
+ * @param vector - The vector to normalize
+ * @returns The normalized vector
+ */
+function normalizeVector(vector: number[]): number[] {
+	const magnitude = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0));
+	if (magnitude === 0) {
+		return vector; // Return zero vector as-is
+	}
+	// Always normalize to ensure exact unit length, even if close to 1
+	// This ensures consistency and handles floating point precision issues
+	// Re-normalizing an already normalized vector is safe (dividing by ~1)
+	return vector.map((val) => val / magnitude);
+}
+
+/**
  * Extended PGVectorStore class to handle custom filtering.
  * This wrapper is necessary because when used as a retriever,
  * similaritySearchVectorWithScore should use this.filter instead of
  * expecting it from the parameter
  */
 class ExtendedPGVectorStore extends PGVectorStore {
+	distanceStrategy?: DistanceStrategy;
+
 	static async initialize(
 		embeddings: EmbeddingsInterface,
 		args: PGVectorStoreArgs & { dimensions?: number },
 	): Promise<ExtendedPGVectorStore> {
 		const { dimensions, ...rest } = args;
 		const postgresqlVectorStore = new this(embeddings, rest);
+
+		// Store distance strategy for normalization check
+		postgresqlVectorStore.distanceStrategy = rest.distanceStrategy;
 
 		await postgresqlVectorStore._initializeClient();
 		await postgresqlVectorStore.ensureTableInDatabase(dimensions);
@@ -203,13 +225,38 @@ class ExtendedPGVectorStore extends PGVectorStore {
 		return postgresqlVectorStore;
 	}
 
+	async addVectors(
+		vectors: number[][],
+		documents: Array<{ pageContent: string; metadata?: Record<string, unknown> }>,
+		ids?: string[],
+	): Promise<string[]> {
+		// Normalize vectors before adding them if using cosine similarity
+		// Cosine similarity measures the angle between vectors, not magnitude,
+		// so normalization is essential for accurate similarity calculations
+		let normalizedVectors = vectors;
+		if (this.distanceStrategy === 'cosine') {
+			normalizedVectors = vectors.map((vector) => normalizeVector(vector));
+		}
+
+		return await super.addVectors(normalizedVectors, documents, ids);
+	}
+
 	async similaritySearchVectorWithScore(
 		query: number[],
 		k: number,
 		filter?: PGVectorStore['FilterType'],
 	) {
 		const mergedFilter = { ...this.filter, ...filter };
-		return await super.similaritySearchVectorWithScore(query, k, mergedFilter);
+
+		// Normalize query vector for cosine similarity to ensure accurate results
+		// Cosine similarity measures the angle between vectors, not magnitude,
+		// so normalization is important for correct similarity calculations
+		let normalizedQuery = query;
+		if (this.distanceStrategy === 'cosine') {
+			normalizedQuery = normalizeVector(query);
+		}
+
+		return await super.similaritySearchVectorWithScore(normalizedQuery, k, mergedFilter);
 	}
 }
 
@@ -242,7 +289,7 @@ export class VectorStorePGVector extends createVectorStoreNode<ExtendedPGVectorS
 		const pgConf = await configurePostgres.call(context, credentials as PostgresNodeCredentials);
 		const pool = pgConf.db.$pool as unknown as pg.Pool;
 
-		const config: PGVectorStoreArgs = {
+		const config: PGVectorStoreArgs & { dimensions?: number } = {
 			pool,
 			tableName,
 			filter,
@@ -272,6 +319,13 @@ export class VectorStorePGVector extends createVectorStoreNode<ExtendedPGVectorS
 			'cosine',
 		) as DistanceStrategy;
 
+		// Extract dimensions from embeddings if available (e.g., from outputDimensionality parameter)
+		// Check if embeddings has a dimensions property (added by logWrapper for embeddings with outputDimensionality)
+		const embeddingsWithDimensions = embeddings as EmbeddingsInterface & { dimensions?: number };
+		if (embeddingsWithDimensions.dimensions !== undefined) {
+			config.dimensions = embeddingsWithDimensions.dimensions;
+		}
+
 		return await ExtendedPGVectorStore.initialize(embeddings, config);
 	},
 
@@ -285,7 +339,7 @@ export class VectorStorePGVector extends createVectorStoreNode<ExtendedPGVectorS
 		const pgConf = await configurePostgres.call(context, credentials as PostgresNodeCredentials);
 		const pool = pgConf.db.$pool as unknown as pg.Pool;
 
-		const config: PGVectorStoreArgs = {
+		const config: PGVectorStoreArgs & { dimensions?: number } = {
 			pool,
 			tableName,
 		};
@@ -308,7 +362,22 @@ export class VectorStorePGVector extends createVectorStoreNode<ExtendedPGVectorS
 			metadataColumnName: 'metadata',
 		}) as ColumnOptions;
 
-		const vectorStore = await PGVectorStore.fromDocuments(documents, embeddings, config);
+		// Get distance strategy for normalization (default to cosine)
+		config.distanceStrategy = context.getNodeParameter(
+			'options.distanceStrategy',
+			0,
+			'cosine',
+		) as DistanceStrategy;
+
+		// Extract dimensions from embeddings if available (e.g., from outputDimensionality parameter)
+		const embeddingsWithDimensions = embeddings as EmbeddingsInterface & { dimensions?: number };
+		if (embeddingsWithDimensions.dimensions !== undefined) {
+			config.dimensions = embeddingsWithDimensions.dimensions;
+		}
+
+		// Use ExtendedPGVectorStore to ensure vectors are normalized for cosine similarity
+		const vectorStore = await ExtendedPGVectorStore.initialize(embeddings, config);
+		await vectorStore.addDocuments(documents);
 		vectorStore.client?.release();
 	},
 
