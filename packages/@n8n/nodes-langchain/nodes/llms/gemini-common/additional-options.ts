@@ -102,6 +102,28 @@ export function getAdditionalOptions({
 				numberPrecision: 0,
 			},
 		});
+		baseOptions.options?.push({
+			displayName: 'Thinking Level',
+			name: 'thinkingLevel',
+			default: undefined,
+			description:
+				'Controls the depth of reasoning for thinking models. Options: "low", "medium", "high". Leave empty for default.',
+			type: 'options',
+			options: [
+				{
+					name: 'Low',
+					value: 'low',
+				},
+				{
+					name: 'Medium',
+					value: 'medium',
+				},
+				{
+					name: 'High',
+					value: 'high',
+				},
+			],
+		});
 	}
 	return baseOptions;
 }

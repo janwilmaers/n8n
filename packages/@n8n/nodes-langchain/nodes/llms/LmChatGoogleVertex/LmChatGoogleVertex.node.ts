@@ -155,6 +155,7 @@ export class LmChatGoogleVertex implements INodeType {
 				topK: { type: 'number', required: false },
 				topP: { type: 'number', required: false },
 				thinkingBudget: { type: 'number', required: false },
+				thinkingLevel: { type: 'string', required: false },
 			},
 			this.getNode(),
 		);
@@ -200,6 +201,11 @@ export class LmChatGoogleVertex implements INodeType {
 			// Add thinkingBudget if specified
 			if (options.thinkingBudget !== undefined) {
 				modelConfig.thinkingBudget = options.thinkingBudget;
+			}
+
+			// Add thinkingLevel if specified
+			if (options.thinkingLevel !== undefined) {
+				modelConfig.thinkingLevel = options.thinkingLevel;
 			}
 
 			const model = new ChatVertexAI(modelConfig);

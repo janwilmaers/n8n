@@ -119,9 +119,9 @@ export class LmChatGoogleGemini implements INodeType {
 				},
 				default: 'models/gemini-2.5-flash',
 			},
-			// thinking budget not supported in @langchain/google-genai
-			// as it utilises the old google generative ai SDK
-			getAdditionalOptions({ supportsThinkingBudget: false }),
+			// Note: thinkingBudget and thinkingLevel support depends on SDK version
+			// The old @langchain/google-genai SDK may have limited support
+			getAdditionalOptions({ supportsThinkingBudget: true }),
 		],
 	};
 
@@ -139,6 +139,8 @@ export class LmChatGoogleGemini implements INodeType {
 			temperature: number;
 			topK: number;
 			topP: number;
+			thinkingBudget?: number;
+			thinkingLevel?: string;
 		};
 
 		const safetySettings = this.getNodeParameter(
@@ -147,7 +149,20 @@ export class LmChatGoogleGemini implements INodeType {
 			null,
 		) as SafetySetting[];
 
-		const model = new ChatGoogleGenerativeAI({
+		const modelConfig: {
+			apiKey: string;
+			baseUrl: string;
+			model: string;
+			topK: number;
+			topP: number;
+			temperature: number;
+			maxOutputTokens: number;
+			safetySettings?: SafetySetting[];
+			callbacks: any[];
+			onFailedAttempt: any;
+			thinkingBudget?: number;
+			thinkingLevel?: string;
+		} = {
 			apiKey: credentials.apiKey as string,
 			baseUrl: credentials.host as string,
 			model: modelName,
@@ -158,7 +173,19 @@ export class LmChatGoogleGemini implements INodeType {
 			safetySettings,
 			callbacks: [new N8nLlmTracing(this, { errorDescriptionMapper })],
 			onFailedAttempt: makeN8nLlmFailedAttemptHandler(this),
-		});
+		};
+
+		// Add thinkingBudget if specified
+		if (options.thinkingBudget !== undefined) {
+			modelConfig.thinkingBudget = options.thinkingBudget;
+		}
+
+		// Add thinkingLevel if specified
+		if (options.thinkingLevel !== undefined) {
+			modelConfig.thinkingLevel = options.thinkingLevel;
+		}
+
+		const model = new ChatGoogleGenerativeAI(modelConfig);
 
 		return {
 			response: model,
