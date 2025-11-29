@@ -128,7 +128,12 @@ export class LmChatGoogleGemini implements INodeType {
 	async supplyData(this: ISupplyDataFunctions, itemIndex: number): Promise<SupplyData> {
 		const credentials = await this.getCredentials('googlePalmApi');
 
-		const modelName = this.getNodeParameter('modelName', itemIndex) as string;
+		let modelName = this.getNodeParameter('modelName', itemIndex) as string;
+		// Normalize model name: trim whitespace and add 'models/' prefix if not present
+		modelName = modelName.trim();
+		if (!modelName.startsWith('models/')) {
+			modelName = `models/${modelName}`;
+		}
 		const options = this.getNodeParameter('options', itemIndex, {
 			maxOutputTokens: 1024,
 			temperature: 0.7,

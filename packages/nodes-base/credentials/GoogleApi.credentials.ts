@@ -216,6 +216,11 @@ const regions = [
 		displayName: 'Americas',
 		location: 'Las Vegas',
 	},
+	{
+		name: 'global',
+		displayName: 'Global',
+		location: 'Global endpoint (required for models like gemini-3-pro-preview)',
+	},
 ] as const;
 
 export class GoogleApi implements ICredentialType {
@@ -238,7 +243,7 @@ export class GoogleApi implements ICredentialType {
 			})),
 			default: 'us-central1',
 			description:
-				'The region where the Google Cloud service is located. This applies only to specific nodes, like the Google Vertex Chat Model',
+				'The region where the Google Cloud service is located. This applies only to specific nodes, like the Google Vertex Chat Model. Use "global" for models that require the global endpoint (e.g., gemini-3-pro-preview).',
 		},
 		{
 			displayName: 'Service Account Email',

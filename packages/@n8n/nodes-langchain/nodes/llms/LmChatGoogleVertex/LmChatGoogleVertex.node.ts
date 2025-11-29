@@ -133,7 +133,29 @@ export class LmChatGoogleVertex implements INodeType {
 		const email = (credentials.email as string).trim();
 		const region = credentials.region as string;
 
-		const modelName = this.getNodeParameter('modelName', itemIndex) as string;
+		let modelName = this.getNodeParameter('modelName', itemIndex) as string;
+		// Normalize model name: remove 'models/' prefix if present (Vertex AI doesn't use it)
+		// Also trim whitespace
+		const originalModelName = modelName;
+		modelName = modelName.trim();
+		if (modelName.startsWith('models/')) {
+			modelName = modelName.replace(/^models\//, '');
+		}
+		// Log model name normalization for debugging
+		if (originalModelName !== modelName) {
+			this.logger.info(
+				`[Vertex AI] Model name normalized: "${originalModelName}" -> "${modelName}"`,
+			);
+		}
+		this.logger.info(`[Vertex AI] Using model: "${modelName}" in region: "${region}"`);
+
+		// Warn if using a model that requires global region with a regional endpoint
+		if (modelName.includes('gemini-3') && region !== 'global') {
+			this.logger.warn(
+				`[Vertex AI] Model "${modelName}" may require the "global" region endpoint. Current region: "${region}". ` +
+					'If you encounter a 404 error, try setting your region to "global" in your Google API credentials.',
+			);
+		}
 
 		const projectId = this.getNodeParameter('projectId', itemIndex, '', {
 			extractValue: true,
@@ -203,9 +225,12 @@ export class LmChatGoogleVertex implements INodeType {
 				modelConfig.thinkingBudget = options.thinkingBudget;
 			}
 
-			// Add thinkingLevel if specified
+			// Add thinkingLevel if specified - convert to uppercase as API expects "LOW", "MEDIUM", "HIGH"
 			if (options.thinkingLevel !== undefined) {
-				modelConfig.thinkingLevel = options.thinkingLevel;
+				modelConfig.thinkingLevel = options.thinkingLevel.toUpperCase() as
+					| 'LOW'
+					| 'MEDIUM'
+					| 'HIGH';
 			}
 
 			const model = new ChatVertexAI(modelConfig);
